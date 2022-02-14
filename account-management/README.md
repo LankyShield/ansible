@@ -1,7 +1,7 @@
 # Account Management
 
 ## ADJoin.yaml
-**Description** - configures hosts to join BYU's Active Directory and sets proper sudo permissions
+**Description** - configures hosts to join an Active Directory and sets proper sudo permissions
 
 **Default host group** - new
 
