@@ -1,0 +1,25 @@
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.idea
+.tox
+*.sublime*
+*.egg-info
+Icon?
+ehthumbs.db
+Thumbs.db
+.eggs
+.coverage
+*.swp
+
+# Ansible files that should not sync #
+######################################
+hosts
+*.txt
+*.retry
+getHosts.vmware.yaml
+*.csv

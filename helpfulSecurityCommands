@@ -1,0 +1,24 @@
+
+To remove an account that can sign in w/out AD:
+  sudo userdel username (to delete account)
+  sudo passwd -d username && sudo passwd -l username (to disable password)
+
+To add an account that can sign in w/out AD:
+  sudo adduser username
+
+To remove AD permitted logins/groups:
+  sudo realm permit --withdraw username
+  sudo realm permit --withdraw -g group
+
+To add AD permitted logins/groups:
+  sudo realm permit username
+  sudo realm permit -g group
+
+To modify /etc/sudoers:
+  sudo visudo
+
+How to remove someone from a group:
+  sudo gpasswd --delete username fromgroupname
+
+How to change file/folder permissions:
+  sudo chmod 700 /path/to/item
