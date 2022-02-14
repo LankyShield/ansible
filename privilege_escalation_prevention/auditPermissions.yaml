@@ -1,0 +1,245 @@
+#######################################################################
+# This runs a bunch of pre-defined commands to audit login and sudo
+# permissions for each Linux host. This includes:
+# 
+# - All users and groups that can sign in with Active Directory
+# - All users that can sign in without Active Directory
+# - Which groups and users have sudo access
+# - World-writable files and folders
+# 
+# In addition, any accounts that are locked out but still have hashes
+# will have the hashes removed.
+#######################################################################
+
+---
+- name: list services that need to be restarted
+  hosts: debian
+  gather_facts: true
+  ignore_errors: true
+  vars:
+    timestamp: "{{ ansible_date_time.epoch }}"
+
+  tasks:
+
+    # creates files on localhost and remote hosts
+    - name: "Create temp file on each remote host to write to"
+      file:
+        path: /tmp/ansible_{{ timestamp }}
+        state: touch
+
+    - name: "Delete old result file on localhost"
+      file:
+        path: ./securityAudit.txt
+        state: absent
+      delegate_to: localhost
+      run_once: true
+
+    - name: "Create result file on localhost"
+      file:
+        path: ./securityAudit.txt
+        state: touch
+      delegate_to: localhost
+      run_once: true
+
+    # formats securityAudit.txt
+    - name: "Security Audit Header"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "\n**************************************************************************************************************\n                                      SECURITY AUDITING FOR LINUX SERVERS                                     \n**************************************************************************************************************\n"
+        insertafter:
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    - include: header.yaml
+
+    # gets users that can sign in without Active Directory
+    - name: "Get users that can sign in without Active Directory"
+      shell: "cat /etc/shadow | grep -v \"*\" | grep -v \"\\!\" | cut -d: -f1"
+      register: usersNoAD
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ usersNoAD.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\nList of accounts that can sign in without Active Directory:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # removes all hashes for locked out accounts
+    - name: "Get users that can sign in without Active Directory"
+      shell: "cat /etc/shadow | grep ':!\\$' | cut -d\":\" -f1 | while read line; do passwd --delete $line; passwd -l $line; done"
+      become: true
+
+    # gets Active Directory login policy
+    - name: "Get the Active Directory login policy"
+      shell: "sudo realm list | grep login-policy"
+      register: ADpolicy
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ ADpolicy.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\n\nActive Directory policy:\n\n{{ donelist | join('\n') }}"
+        insertafter:
+        state: present
+
+    # gets Active Directory permitted accounts
+    - name: "Get users that can sign in with Active Directory"
+      shell: "sudo realm list | grep permitted-logins:"
+      register: ADpermittedAccounts
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ ADpermittedAccounts.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "{{ donelist | join('\n') }}"
+        insertafter:
+        state: present
+
+    # gets Active Directory permitted groups
+    - name: "Get groups that can sign in with Active Directory"
+      shell: "sudo realm list | grep permitted-groups"
+      register: ADpermittedGroups
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ ADpermittedGroups.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "{{ donelist | join('\n') }}"
+        insertafter:
+        state: present
+
+    # gets /etc/sudoers without comments
+    - name: "Get sudoers file without comments"
+      shell: "sudo cat /etc/sudoers | grep . | grep -v \"#\""
+      register: sudoers
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ sudoers.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\n\nContents of /etc/sudoers:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # gets all members of sudo-enabled groups
+    - name: "Get members of sudo-enabled groups"
+      shell: "sudo cat /etc/sudoers | grep '%' | grep -v \"#\" | xargs -L1 echo | cut -d\\  -f1 | cut -d% -f2 | while read line; do sudo cat /etc/group | grep $line; done"
+      register: sudoMembers
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ sudoMembers.stdout_lines | list }}"
+
+    - name: "Print list to temp file" 
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\nMembers of sudo-enabled groups:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # gets world-writable folders (excluding anything with tmp in the name)
+    - name: "Get world-writable folders that don't say tmp"
+      shell: "if ! sudo find / -xdev -type d -perm -0002 -ls | grep -v \"tmp\"; then echo \"\"; fi"
+      register: wwFolders
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ wwFolders.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\n\nWorld-writable folders that don't say tmp:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # gets world-writable files
+    - name: "Get world-writable files"
+      shell: "sudo find / -xdev -type f -perm -0002 -ls"
+      register: wwFiles
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ wwFiles.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\nWorld-writable files:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # finishes writing each file
+    - name: "Ending separation line for each file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\n------------------------------------------------------------------------------------------\n"
+        insertafter:
+        state: present
+
+    # combines files into securityAudit.txt and removes remote host files
+    - name: "Get file contents from temp file on remote hosts"
+      command: cat /tmp/ansible_{{ timestamp }}
+      register: usersNoAD
+
+    - name: "Organize file contents"
+      set_fact:
+        donelist: "{{ usersNoAD.stdout_lines | list }}"
+
+    - name: "Combine contents of each remote host and print to local file"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "{{ donelist | join('\n') }}"
+        insertafter:
+        state: present
+      delegate_to: localhost
+
+    # header for helpful commands
+    - name: "Security Commands Header"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "\n**************************************************************************************************************\n                                    COMMANDS TO FIX THESE SECURITY CONCERNS                                   \n**************************************************************************************************************\n"
+        insertafter:
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    # helpful commands
+    - name: "Helpful commands"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "{{ lookup('file'), './helpfulSecurityCommands' }}"
+        insertafter:
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    - name: "Delete temp file on each remote host"
+      file:
+        path: /tmp/ansible_{{ timestamp }}
+        state: absent

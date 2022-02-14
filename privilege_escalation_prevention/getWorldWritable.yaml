@@ -1,0 +1,124 @@
+---
+- name: list services that need to be restarted
+  hosts: test
+  gather_facts: true
+  ignore_errors: true
+  vars:
+    timestamp: "{{ ansible_date_time.epoch }}"
+
+  tasks:
+    # creates files on localhost and remote hosts
+    - name: "Create temp file on each remote host to write to"
+      file:
+        path: /tmp/ansible_{{ timestamp }}
+        state: touch
+
+    - name: "Delete old result file on localhost"
+      file:
+        path: ./securityAudit.txt
+        state: absent
+      delegate_to: localhost
+      run_once: true
+
+    - name: "Create result file on localhost"
+      file:
+        path: ./securityAudit.txt
+        state: touch
+      delegate_to: localhost
+      run_once: true
+
+    # formats securityAudit.txt
+    - name: "Security Audit Header"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "\n**************************************************************************************************************\n                                      SECURITY AUDITING FOR LINUX SERVERS                                     \n**************************************************************************************************************\n"
+        insertafter:
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    - include: header.yaml
+
+    # gets world-writable folders (excluding anything with tmp in the name)
+    - name: "Get world-writable folders that don't say tmp"
+      shell: "if ! sudo find / -xdev -type d -perm -0002 -ls | grep -v \"tmp\"; then echo \"\"; fi"
+      register: wwFolders
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ wwFolders.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\n\nWorld-writable folders that don't say tmp:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # gets world-writable files
+    - name: "Get world-writable files"
+      shell: "sudo find / -xdev -type f -perm -0002 -ls"
+      register: wwFiles
+      become: true
+
+    - name: "Organize user list"
+      set_fact:
+        donelist: "{{ wwFiles.stdout_lines | list }}"
+
+    - name: "Print list to temp file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\nWorld-writable files:\n\n  {{ donelist | join('\n  ') }}"
+        insertafter:
+        state: present
+
+    # finishes writing each file
+    - name: "Ending separation line for each file"
+      lineinfile:
+        dest: /tmp/ansible_{{ timestamp }}
+        line: "\n------------------------------------------------------------------------------------------\n"
+        insertafter:
+        state: present
+
+    # combines files into securityAudit.txt and removes remote host files
+    - name: "Get file contents from temp file on remote hosts"
+      command: cat /tmp/ansible_{{ timestamp }}
+      register: usersNoAD
+
+    - name: "Organize file contents"
+      set_fact:
+        donelist: "{{ usersNoAD.stdout_lines | list }}"
+
+    - name: "Combine contents of each remote host and print to local file"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "{{ donelist | join('\n') }}"
+        insertafter:
+        state: present
+      delegate_to: localhost
+
+    # header for helpful commands
+    - name: "Security Commands Header"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "\n**************************************************************************************************************\n                                    COMMANDS TO FIX THESE SECURITY CONCERNS                                   \n**************************************************************************************************************\n"
+        insertafter:
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    # helpful commands
+    - name: "Helpful commands"
+      lineinfile:
+        dest: ./securityAudit.txt
+        line: "{{ lookup('file'), './helpfulSecurityCommands' }}"
+        insertafter:
+        state: present
+      delegate_to: localhost
+      run_once: true
+
+    - name: "Delete temp file on each remote host"
+      file:
+        path: /tmp/ansible_{{ timestamp }}
+        state: absent
