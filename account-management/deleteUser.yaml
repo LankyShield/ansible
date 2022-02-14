@@ -1,0 +1,20 @@
+#######################################################################
+# 
+# This uses Ansible's built-in functionality to delete a user across 
+# multiple systems.
+# 
+#######################################################################
+
+- hosts: temp
+
+  vars_prompt:
+    - name: "user"
+      prompt: "Username"
+      private: no
+
+  tasks:
+    - name: remove user
+      user:
+        name: "{{ user }}"
+        state: absent
+      become: true

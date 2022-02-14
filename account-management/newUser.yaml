@@ -1,0 +1,25 @@
+#######################################################################
+# 
+# This uses Ansible's built-in functionality to add a new user across
+# multiple systems.
+# 
+#######################################################################
+
+- hosts: temp
+
+  vars_prompt:
+    - name: "user"
+      prompt: "Username"
+      private: no
+
+    - name: "password"
+      prompt: "Password"
+      private: yes
+
+  tasks:
+    - name: Create a new user
+      user:
+        name: "{{ user }}"
+        password: "{{ password | password_hash('sha512') }}"
+        state: present
+      become: true

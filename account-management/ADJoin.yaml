@@ -1,0 +1,101 @@
+#######################################################################
+# 
+# This runs a bunch of pre-defined commands to join Debian and Ubuntu
+# machines to an Active Directory domain. Steps:
+# 
+# - Installs all dependencies
+# - Edits config files
+# - Joins the domain
+# - Configures who can log in
+# - Sets proper sudo permissions
+# 
+#######################################################################
+
+- name: Connect machine to active directory
+  hosts: new
+  vars_prompt:
+
+    - name: "ADUser"
+      prompt: "AD Username"
+      private: no
+
+    - name: "ADUserPass"
+      prompt: "AD User Password"
+      private: yes
+
+  tasks:
+    - name: install packages on 9
+      apt:
+        name: ['sssd', 'samba-common', 'oddjob', 'oddjob-mkhomedir', 'adcli', 'realmd', 'chrony', 'policykit-1', 'krb5-config', 'krb5-user', 'python3-pexpect', 'zsh', 'sudo']
+        state: present
+      become: True
+
+    - name: edit conf files for Debian
+      block:        
+      - lineinfile:
+          path: /etc/krb5.conf
+          insertafter: '\[libdefaults\]'
+          line: "        rdns = false"
+          state: present
+
+      - lineinfile:
+          path: /etc/pam.d/common-session
+          insertafter: EOF
+          line: "session required  pam_mkhomedir.so skel=/etc/skel/ umask=0022"
+          state: present
+      become: true
+
+    - name: Join Domain    
+      block:
+      - expect:
+          command: "**DOMAIN HERE** --install=/"
+          responses:
+            Password*: "{{ ADUserPass }}" 
+      - command: "{{ item }}" 
+        with_items:
+          - "realm deny --all"
+          - "realm permit -g **ADMIN GROUP HERE**"
+      tags:
+        - register
+      become: true
+
+    - name: edit conf files for both systems
+      block:
+        - lineinfile:
+            path: /etc/sssd/sssd.conf
+            regexp: 'use_fully_qualified_names.*'
+            state: absent
+            line: 'use_fully_qualified_names = True'
+          
+        - lineinfile:
+            path: /etc/sssd/sssd.conf
+            regexp: 'fallback_homedir.*'
+            state: present
+            line: 'fallback_homedir = /home/%d/%u'
+
+        - lineinfile:
+            path: /etc/sssd/sssd.conf
+            regexp: 'ignore_group_members.*'
+            state: present
+            line: 'ignore_group_members = True'
+
+        - lineinfile:
+            path: /etc/sssd/sssd.conf
+            regexp: 'default_shell.*'
+            state: present
+            line: 'default_shell = /bin/zsh'
+            
+      become: true
+
+    - name: sleep for 5 seconds
+      pause:
+        seconds: 5
+      become: true
+
+    - name: restart SSSD
+      systemd:
+        state: restarted
+        name: sssd
+      become: true
+      tags:
+        - conf
