@@ -1,0 +1,22 @@
+#######################################################################
+#                                                                     #
+# This installs a package on a Debian or Ubuntu machine using apt     #
+#                                                                     #
+#######################################################################
+
+- name: install
+  hosts: debian
+
+  vars_prompt:
+    - name: "package"
+      prompt: "Package to install"
+      private: no
+
+  tasks:
+    - name: "Install one or more packages"
+      apt:
+        update_cache: true
+        name:
+          - "{{ package }}"
+        state: latest
+      become: true

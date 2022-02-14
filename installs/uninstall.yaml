@@ -1,0 +1,22 @@
+#######################################################################
+# 
+# This removes a package using apt. If a package needs to be removed by
+# another way, a custom Ansible file should be created.
+# 
+#######################################################################
+
+- name: uninstall
+  hosts: debian
+
+  vars_prompt:
+    - name: "package"
+      prompt: "Package name"
+      private: no
+
+  tasks:
+    - name: "Uninstall one or more packages"
+      apt:
+        name:
+          - "{{ package }}"
+        state: absent
+      become: true
